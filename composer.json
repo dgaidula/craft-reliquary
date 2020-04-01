@@ -32,8 +32,8 @@
 		}
 	},
 	"extra": {
-		"name": "Craft Reliquary",
-		"handle": "craft-reliquary",
+		"name": "Reliquary",
+		"handle": "reliquary",
 		"changelogUrl": "https://github.com/jaredlindo/craft-reliquary/master/CHANGELOG.md",
 		"downloadUrl": "https://github.com/jaredlindo/craft-reliquary/archive/master.zip",
 		"schemaVersion": "0.0.1",
