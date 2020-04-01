@@ -1,0 +1,30 @@
+{% extends '_layouts/cp' %}
+{# Reliquary score customization panel. #}
+
+{% import '_includes/forms' as forms %}
+
+{% set title = 'Score Customization' | t('reliquary') %}
+{% set selectedSubnavItem = 'customize' %}
+{% set crumbs = [
+	{
+		label: 'Reliquary' | t('reliquary'),
+		url: url('reliquary')
+	},
+] %}
+{% set fullPageForm = true %}
+
+{% set settings = craft.app.getPlugins().getPlugin('reliquary').getSettings() %}
+
+{% block content %}
+	<input type="hidden" name="action" value="reliquary/customize/save-settings">
+
+	{{ forms.textField({
+		label: 'Minimum Score Allowed' | t('reliquary'),
+		instructions: 'Search results with a score below this amount will be omitted.' | t('reliquary'),
+		id: 'settings[minimumScore]',
+		name: 'settings[minimumScore]',
+		value: settings.minimumScore | default(0.1),
+		errors: settings.getErrors('settings[minimumScore]'),
+		required: true,
+	}) }}
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends '_layouts/cp' %}
+{# Reliquary overview panel. #}
+
+{% set title = 'Reliquary' | t('reliquary') %}
+{% set selectedSubnavItem = 'dashboard' %}
+
+{% do view.registerAssetBundle('charliedev\\reliquary\\assets\\ReliquaryAsset') %}
+{% do view.registerAssetBundle('charliedev\\reliquary\\assets\\ReliquaryFrontendExampleAsset') %}
+
+{% block content %}
+	<div class="rq-site-selector">
+		<h2>Site to search</h2>
+		<select>
+			<option disabled selected>Choose a site</option>
+			{% for site in craft.app.sites.allSites %}
+				<option value="{{ alias(site.baseUrl) }}">{{ site.name }}</option>
+			{% endfor %}
+		</select>
+	</div>
+	<form method="POST" action="/">
+		{{ csrfInput() }}
+		<input type="hidden" name="action" value="reliquary/search/search">
+		<div class="rq-search-container"></div>
+	</form>
+{% endblock %}
+
+{% js %}
+	// Generate a search form for the selected site when the selection changes.
+	var selector = document.querySelector('.rq-site-selector select');
+	var container = document.querySelector('.rq-search-container');
+	selector.addEventListener('change', function() {
+		new window.Reliquary.FormHandler(container, selector.value);
+	});
+{% endjs %}

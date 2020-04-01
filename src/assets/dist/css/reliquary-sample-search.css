@@ -1,0 +1,23 @@
+.rq-search-container p.load-placeholder {
+	margin-top: 12px !important;
+	opacity: 0.5;
+}
+
+.rq-search-container h2 {
+	margin-top: 16px !important;
+}
+
+.rq-search-container input.submit {
+	margin-top: 16px;
+}
+
+.rq-search-container .rq-results-container {
+	margin-top: 20px;
+}
+
+.rq-search-container .element-card {
+	margin: 12px 0;
+	padding: 12px;
+	border: 1px solid #e3e5e8;
+	box-shadow: 0 1px 5px -1px rgba(0, 0, 0, 0.1);
+}

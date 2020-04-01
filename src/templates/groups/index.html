@@ -1,0 +1,50 @@
+{% extends '_layouts/cp' %}
+{# Reliquary groups overview panel. #}
+
+{% set title = 'Search Groups' | t('reliquary') %}
+{% set selectedSubnavItem = 'groups' %}
+{% set crumbs = [
+	{
+		label: 'Reliquary' | t('reliquary'),
+		url: url('reliquary')
+	},
+] %}
+
+{% block actionButton %}
+	<a href="{{ url('reliquary/groups/new') }}" class="btn submit add icon">{{ 'New search group' | t('reliquary') }}</a>
+{% endblock %}
+
+{% block content %}
+	{% set groups = craft.reliquary.searchGroups.getAllGroups() %}
+	<table id="search-groups" class="data fullwidth">
+		<thead>
+			<th scope="col">{{ 'Name' | t('app') }}</th>
+			<th scope="col">{{ 'Handle' | t('app') }}</th>
+			<th scope="col">{{ 'Site' | t('app') }}</th>
+			<td class="thin"></td>
+			<td class="thin"></td>
+		</thead>
+		<tbody>
+			{% for group in groups %}
+				<tr data-id="{{ group.id }}" data-name="{{ group.name }}">
+					<th scope="row" data-title="{{ 'Name' | t('app') }}">
+						<a href="{{ url('reliquary/groups/' ~ group.id) }}">{{ group.name }}</a>
+					</th>
+					<td data-title="{{ 'Handle' | t('app') }}"><code>{{ group.handle }}</code></td>
+					<td data-title="{{ 'Site' | t('app') }}">{{ group.getSite().name | t('site') }}</td>
+					<td class="thin"><a class="move icon" title="{{ 'Reorder' | t('app') }}" role="button"></a></td>
+					<td class="thin"><a class="delete icon" title="{{ 'Delete' | t('app') }}" role="button"></a></td>
+				</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+{% endblock %}
+
+{% js on ready %}
+	new Craft.AdminTable({
+		tableSelector: '#search-groups',
+		sortable: true,
+		reorderAction: 'reliquary/groups/reorder-groups',
+		deleteAction: 'reliquary/groups/delete-group',
+	});
+{% endjs %}

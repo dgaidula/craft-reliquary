@@ -1,0 +1,218 @@
+{% extends '_layouts/cp' %}
+{# Reliquary group editor panel. #}
+
+{% import "_includes/forms" as forms %}
+
+{% set title = group.name | default('New Search Group' | t('reliquary')) %}
+{% set selectedSubnavItem = 'groups' %}
+{% set crumbs = [
+	{
+		label: 'Reliquary' | t('reliquary'),
+		url: url('reliquary')
+	},
+	{
+		label: 'Search Groups' | t('reliquary'),
+		url: url('reliquary/groups')
+	},
+] %}
+{% set fullPageForm = true %}
+
+{% do view.registerAssetBundle('charliedev\\reliquary\\assets\\ReliquaryAsset') %}
+
+{% block content %}
+	<input type="hidden" name="action" value="reliquary/groups/save-group">
+
+	{{ redirectInput('reliquary/groups') }}
+
+	{% if group.id %}
+		<input type="hidden" name="id" value="{{ group.id }}">
+	{% endif %}
+
+	{{ forms.textField({
+		label: 'Name' | t('app'),
+		instructions: 'The name used to represent this search group.' | t('reliquary'),
+		id: 'name',
+		name: 'name',
+		value: group.name,
+		errors: group.getErrors('name'),
+		required: true,
+		autofocus: true,
+		fieldClass: 'first',
+	}) }}
+
+	{{ forms.textField({
+		label: 'Handle' | t('app'),
+		instructions: 'The key used to reference this search group.' | t('reliquary'),
+		id: 'handle',
+		class: 'code',
+		name: 'handle',
+		maxlength: 64,
+		value: group.handle,
+		errors: group.getErrors('handle'),
+		required: true,
+	}) }}
+
+	{% set sites = [] %}
+	{% for site in craft.app.getSites().getAllSites() %}
+		{% set sites = sites | merge([{
+			'label': site.name | t('site'),
+			'value': site.id,
+		}]) %}
+	{% endfor %}
+	{{ forms.selectField({
+		label: 'Site' | t('app'),
+		instructions: 'Which site this group will be available to and pull results from.' | t('reliquary'),
+		id: 'siteId',
+		name: 'siteId',
+		value: group.siteId | default(craft.app.getSites().getPrimarySite().id),
+		options: sites,
+		errors: group.getErrors('siteId'),
+		required: true,
+	}) }}
+
+	{{ forms.textField({
+		label: 'Template' | t('app'),
+		instructions: 'The template used to render search results.' | t('reliquary'),
+		id: 'template',
+		name: 'template',
+		value: group.template,
+		errors: group.getErrors('template'),
+		required: true,
+	}) }}
+
+	{{ forms.textField({
+		label: 'Results Per Page' | t('reliquary'),
+		instructions: 'The number of results that will appear on each page.' | t('reliquary'),
+		id: 'pageSize',
+		name: 'pageSize',
+		type: 'number',
+		value: group.pageSize | default(10),
+		errors: group.getErrors('pageSize'),
+		required: true,
+	}) }}
+
+	{{ forms.selectField({
+		label: 'Search Order' | t('reliquary'),
+		instructions: 'The order used to display search results by default.' | t('reliquary'),
+		id: 'searchOrder',
+		name: 'searchOrder',
+		value: group.searchOrder,
+		options: {
+			'default' : 'Craft Default (By element group)' | t('reliquary'),
+			'default nogroup' : 'Craft Default (Without element grouping)' | t('reliquary'),
+			'date desc' : 'Sort Newest to Oldest' | t('reliquary'),
+			'date asc' : 'Sort Oldest to Newest' | t('reliquary'),
+			'id desc' : 'Sort by ID (Higest to Lowest)' | t('reliquary'),
+			'id asc' : 'Sort by ID (Lowest to Highest)' | t('reliquary'),
+			'title asc' : 'Sort Alphabetically' | t('reliquary'),
+			'title desc' : 'Sort Alphabetically Reversed' | t('reliquary'),
+			'score' : 'Sort by Score (Must always include search string)' | t('reliquary'),
+		},
+		errors: group.getErrors('searchOrder'),
+		required: true,
+	}) }}
+
+	{% set newId = 1 -%}
+	{% set filtersField -%}
+<div id="elements" class="rq-card-box">
+	{%- if group.id %}
+		{%- for element in group.getSearchElements() -%}
+			<div class="rq-card with-bar" data-type-class="{{ element.elementType }}" data-type-id="{{ element.elementTypeId }}">
+				<div class="rq-card-bar">
+					<a class="delete icon" title="Delete" role="button"></a>
+					<a class="move icon" title="Reorder" role="button"></a>
+				</div>
+
+				{% set elementId = element.id | default('new' ~ newId) %}
+				{% set newId = newId + 1 -%}
+				<input type="hidden" name="elements[{{ elementId }}][type]" value="{{ element.elementType }}">
+				<input type="hidden" name="elements[{{ elementId }}][typeId]" value="{{ element.elementTypeId }}">
+
+				<h2 class="rq-card-head">Element Subtype Name</h2>
+				<div>
+					<span class="rq-card-subhead">Element Name</span>
+					<span class="rq-card-handle code">element\class</span>
+				</div>
+
+			</div>
+		{%- endfor -%}
+	{%- endif -%}
+</div>
+<div class="btn add icon rq-dotted-wide">{{ 'Add new search element' | t('reliquary') }}</div>
+	{%- endset %}
+	{{ forms.field({
+		label: 'Searchable Elements' | t('reliquary'),
+		instructions: 'Types of elements that are searchable within this group.' | t('reliquary'),
+	}, filtersField) }}
+
+	{% set filtersField -%}
+<div id="filters" class="rq-card-box">
+	{%- if group.id -%}
+		{%- for filter in group.getFilters() -%}
+			<div class="rq-card with-bar" data-field-id="{{ filter.fieldId }}" data-attribute="{{ filter.attribute }}">
+				<div class="rq-card-bar">
+					<a class="delete icon" title="Delete" role="button"></a>
+					<a class="move icon" title="Reorder" role="button"></a>
+				</div>
+
+				{% set filterId = filter.id | default('new' ~ newId) %}
+				{% set newId = newId + 1 -%}
+				<input type="hidden" name="filters[{{ filterId }}][fieldId]" value="{{ filter.fieldId }}">
+				<input type="hidden" name="filters[{{ filterId }}][attribute]" value="{{ filter.attribute }}">
+
+				<h2 class="rq-card-head">
+					{% if filter.fieldId %}
+						Field: {{ craft.app.getFields().getFieldById(filter.fieldId).name }}
+					{% else %}
+						Element Attribute: <span class="code">{{ filter.attribute }}</span>
+					{% endif %}
+				</h2>
+
+				{{ forms.textField({
+					label: 'Filter Name' | t('reliquary'),
+					instructions: 'The name used to represent the filter on the frontend.' | t('reliquary'),
+					id: 'filters-' ~ filterId ~ '-name',
+					name: 'filters[' ~ filterId ~ '][name]',
+					value: filter.name,
+					errors: filter.getErrors('name'),
+					required: true,
+					fieldClass: 'first',
+				}) }}
+
+				{{ forms.textField({
+					label: 'Filter Handle' | t('reliquary'),
+					instructions: 'The key used to reference this filter.' | t('reliquary'),
+					id: 'filters-' ~ filterId ~ '-handle',
+					name: 'filters[' ~ filterId ~ '][handle]',
+					value: filter.handle,
+					errors: filter.getErrors('handle'),
+					required: true,
+				}) }}
+
+			</div>
+		{%- endfor -%}
+	{%- endif -%}
+</div>
+<div class="btn add icon rq-dotted-wide">{{ 'Add new filter' | t('reliquary') }}</div>
+	{%- endset %}
+	{{ forms.field({
+		label: 'Search Filters' | t('reliquary'),
+		instructions: 'Filterable fields and attributes for elements searchable within this group.' | t('reliquary'),
+	}, filtersField) }}
+	<div class="spacer last"></div>
+
+{% endblock %}
+
+{% if group.handle is empty %}
+	{% js %}
+		new Craft.HandleGenerator('#name', '#handle');
+	{% endjs %}
+{% endif %}
+
+{% js %}
+	window.Reliquary.elements = {{ craft.reliquary.search.getAvailableElements() | json_encode() | raw }};
+	window.Reliquary.fieldLayouts = {{ craft.reliquary.search.getFieldLayouts() | json_encode() | raw }};
+	window.Reliquary.fields = {{ craft.reliquary.search.getAvailableFields() | json_encode() | raw }};
+
+	new Reliquary.GroupEditor();
+{% endjs %}
