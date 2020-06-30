@@ -615,7 +615,7 @@ class TestController extends Controller
 		// Create assets.
 		$filename = uniqid('placeholder1.png');
 		@copy(
-			Craft::$app->getPath()->getVendorPath() . '/charliedev/reliquary/src/examples/placeholder1.png',
+			Craft::$app->getPath()->getVendorPath() . '/jaredlindo/reliquary/src/examples/placeholder1.png',
 			Craft::$app->getPath()->getTempPath() . '/' . $filename
 		);
 		$asset = new Asset([
@@ -631,7 +631,7 @@ class TestController extends Controller
 
 		$filename = uniqid('placeholder2.png');
 		@copy(
-			Craft::$app->getPath()->getVendorPath() . '/charliedev/reliquary/src/examples/placeholder2.png',
+			Craft::$app->getPath()->getVendorPath() . '/jaredlindo/reliquary/src/examples/placeholder2.png',
 			Craft::$app->getPath()->getTempPath() . '/' . $filename
 		);
 		$asset = new Asset([
