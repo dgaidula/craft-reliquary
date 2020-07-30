@@ -6,8 +6,6 @@
 
 namespace jaredlindo\reliquary;
 
-use jaredlindo\reliquary\helpers\Search as SearchHelper;
-use jaredlindo\reliquary\jobs\ProcessIndexes;
 use jaredlindo\reliquary\services\Search;
 use jaredlindo\reliquary\services\SearchGroups;
 use jaredlindo\reliquary\services\SearchGroupElements;
@@ -131,98 +129,6 @@ class Reliquary extends Plugin
 						Craft::$app->getResponse()->redirect(UrlHelper::cpUrl('reliquary'));
 					}
 				}
-			}
-		);
-
-		// If the search index is rebuilt, trigger Reliquary's rebuild behavior as well.
-		Event::on(
-			UtilitiesController::class,
-			UtilitiesController::EVENT_BEFORE_ACTION,
-			function (ActionEvent $event) {
-				// Only for this specific action.
-				if ($event->action->id != 'search-index-perform-action') {
-					return;
-				}
-
-				// See \craft\controllers\UtilitiesController::actionSearchIndexPerformAction()
-				// Pull parameters just as it does, and check the `start` parameter.
-				// Only clear the table on first call.
-				$params = Craft::$app->getRequest()->getRequiredBodyParam('params');
-				if (!empty($params['start'])) {
-					$this->search->clearIndexTables();
-				}
-			}
-		);
-
-		// After an element has been manually reindexed, manually process the Reliquary index.
-		Event::on(
-			UtilitiesController::class,
-			UtilitiesController::EVENT_AFTER_ACTION,
-			function (ActionEvent $event) {
-				// Only for this specific action.
-				if ($event->action->id != 'search-index-perform-action') {
-					return;
-				}
-
-				// See \craft\controllers\UtilitiesController::actionSearchIndexPerformAction()
-				// Pull parameters just as it does, and check the `start` parameter.
-				// Only process when called for an element.
-				$params = Craft::$app->getRequest()->getRequiredBodyParam('params');
-				if (!empty($params['id'])) {
-
-					$class = $params['type'];
-
-					if (Reliquary::shouldDiscardIndex($class)) { // If this element should have its indexes discarded.
-						return;
-					}
-
-					if ($class::isLocalized()) {
-						$siteIds = Craft::$app->getSites()->getAllSiteIds();
-					} else {
-						$siteIds = [Craft::$app->getSites()->getPrimarySite()->id];
-					}
-
-					foreach ($siteIds as $siteId) {
-						SearchHelper::processElementIndex($params['id'], $siteId);
-					}
-				}
-			}
-		);
-
-		// Ensure ngram indexes are cleaned up after an element is deleted.
-		Event::on(
-			Elements::class,
-			Elements::EVENT_AFTER_DELETE_ELEMENT,
-			function (ElementEvent $event) {
-				$this->search->deleteIndexDataForElement($event->element);
-			}
-		);
-
-		// Clear any pending index updates that haven't yet processed, just in
-		// case multiple saves trigger in rapid succession before the queue has
-		// a chance to process.
-		Event::on(
-			Elements::class,
-			Elements::EVENT_BEFORE_SAVE_ELEMENT,
-			function(ElementEvent $event) {
-				if ($event->element->id) { // No ID for new entries, skip clearing.
-					$this->search->clearPendingIndexQueue($event->element->id, $event->element->siteId);
-				}
-			}
-		);
-
-		// Queue the job that updates indexes after an element is saved.
-		Event::on(
-			Elements::class,
-			Elements::EVENT_AFTER_SAVE_ELEMENT,
-			function(ElementEvent $event) {
-				if (Reliquary::shouldDiscardIndex(get_class($event->element))) { // If this element should have its indexes discarded.
-					return;
-				}
-				Craft::$app->queue->push(new ProcessIndexes([
-					'elementId' => $event->element->id,
-					'siteId' => $event->element->siteId,
-				]));
 			}
 		);
 

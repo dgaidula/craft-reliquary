@@ -7,7 +7,6 @@
 namespace jaredlindo\reliquary\controllers;
 
 use jaredlindo\reliquary\Reliquary;
-use jaredlindo\reliquary\helpers\Search as SearchHelper;
 use jaredlindo\reliquary\models\SearchGroup;
 use jaredlindo\reliquary\models\SearchGroupElement;
 use jaredlindo\reliquary\models\SearchGroupFilter;
@@ -1314,22 +1313,5 @@ class TestController extends Controller
 		}
 
 		return $this->asJson(['success' => true]);
-	}
-
-	/**
-	 * Builds ngram parts out of a unit of text.
-	 */
-	public function actionBuildNgram()
-	{
-		$text = Craft::$app->getRequest()->getRequiredParam('text');
-		$grams = SearchHelper::buildNgram($text);
-		foreach ($grams as $key => $gram) {
-			$grams[$key] = [
-				'text' => $gram,
-				'length' => strlen($gram),
-				'encoded' => substr(chunk_split(bin2hex($gram), 2, ' '), 0, -1),
-			];
-		}
-		return $this->asJson($grams);
 	}
 }

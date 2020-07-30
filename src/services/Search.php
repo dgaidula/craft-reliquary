@@ -20,14 +20,13 @@ use jaredlindo\reliquary\events\ReliquaryGetElements;
 use jaredlindo\reliquary\events\ReliquaryGetElementTypes;
 use jaredlindo\reliquary\events\ReliquaryGetFieldOptions;
 use jaredlindo\reliquary\events\ReliquaryModifyFilterQuery;
-use jaredlindo\reliquary\helpers\Search as SearchHelper;
-use jaredlindo\reliquary\models\CustomFieldWeight;
-use jaredlindo\reliquary\records\CustomFieldWeight as CustomFieldWeightRecord;
 use jaredlindo\reliquary\Reliquary;
 
 use Craft;
 use craft\base\Element;
 use craft\db\Query;
+use craft\db\Table;
+use craft\helpers\Search as SearchHelper;
 
 use yii\base\Component;
 use yii\base\Event;
@@ -173,8 +172,6 @@ class Search extends Component
 	 * with. An option provided with a null filter is a general search term.
 	 * @param int $page The page of results to retrieve, result count per page
 	 * depends upon the search group itself.
-	 * @param bool $skipRecording Pass true to explicitly ignore recording
-	 * statistics about the search term and filters used.
 	 * @return array A structured array containing:
 	 * `totalElements` - Count of all elements that match the provided filters.
 	 * `totalPages` - Count of pages that match the provided filters, based
@@ -190,7 +187,7 @@ class Search extends Component
 	 * `queryTime` - The time it took the request to be parsed, executed, and
 	 *   returned.
 	 */
-	public function doSearch(int $groupId, $options, $page = 1, $skipRecording = false)
+	public function doSearch(int $groupId, $options, $page = 1)
 	{
 		$queryTime = microtime(true);
 
@@ -207,67 +204,23 @@ class Search extends Component
 			$filters[$filter->id] = $filter;
 		};
 
-		// At this point there are a number of routes that could be taken to
-		// determine the final results of a query. All in all, we have a set of
-		// elements that must be filtered, some potentially concrete criteria
-		// through relations or another similar index, and potentially some
-		// text that needs to be searched.
-
-		// To facilitate speed when searching, we need to determine what
-		// criteria are most important to filter by first in order to retrieve
-		// a reasonable subset of elements to inspect more thoroughly.
-
 		// In Craft's own searching mechanism, the query is built from the base
 		// set of criteria, such as status, creation date, titles, fields,
 		// and so on, and then used to retrieve a set of potential element IDs.
 
-		// These IDs are then sent to the search service and the provided query
-		// is used to further filter out elements that are not relevant based on
-		// the provided keywords. It also comes with handy features for
-		// searching content columns, titles, etc. that are parsed from the
-		// (generally) client-provided search string.
+		// These IDs are then sent to the search service and the provided search
+		// text to compare against MySQL's full text search to further filter
+		// elements of that set that match the given text.
 
-		// These other index-like searching features are handled through the
-		// options provided to Reliquary, so we don't need the same kind of
-		// extra search features, we're only dealing with keywords.
+		// Reliquary's foregoes the two-pass approach and builds the entire
+		// process as a single query, to help facilitate speed, especially when
+		// the initial pass at filters may return a very large pool of candidate
+		// elements.
 
-		// When using only keywords, it is possible that our keywords may narrow
-		// down a search much more than the other (site/element) criteria does.
-		// This is especially true in cases where one is searching large groups
-		// that cover multiple sections or a large number of entries. Instead,
-		// what we are able to do as a rough heuristic, is gather usage
-		// statistics of our required ngrams, and use that to make a guess about
-		// how we should structure our queries and approach retrieving the data.
-
-		// A rough outline of Reliquary's approach is as follows:
-
-		// 1) Build initial query elements.
-		// Using the filters provided, query parts (where/join/etc.) are built
-		// out through the adapter system. At the same time, search strings are
-		// gathered based on the filters.
-
-		// 2) Heuristics passes.
-		// If there are many filters applied, it may be more beneficial to start
-		// with filtered element IDs, similar to how Craft already manages.
-		// Alternatively, some statistics about filters being used, such as
-		// how many elements have a particular tag, or exist within a particular
-		// section may be used.
-
-		// If search strings exist, they are broken down into ther relevant 3
-		// character ngrams and used in a query to the aggregate table to find
-		// out general usage information. This can be used as a rough indicator
-		// of how many entries may match a particular search.
-
-		// This aggregation is a possible future optimization, and not currently
-		// implemented or used.
-
-		// 3) Final filtering.
-		// Regardless of approach, the final query will narrow the results
-		// down to a criteria that can finally be sent to retrieve a set of
-		// element IDs and types. If no search query is provided, this will also
-		// apply the group's specified sorting condition. If search queries are
-		// provided, results are returned by relevancy based on the ngram
-		// lookups performed.
+		// This mechanism builds a complex query with Yii's query builder, but
+		// also has touse a little bit of manual SQL because Yii doesn't have
+		// a mechanism for things like plain text search or some finer-grained
+		// mechanisms that are made generic for the querying system as a whole.
 
 		// Create base element filters from the element types being searched for.
 		$typeUnionQuery = null;
@@ -301,7 +254,7 @@ class Search extends Component
 				'e.dateDeleted' => null,
 			]);
 
-		// Get build query parts related to the provided filters.
+		// Build query parts related to the provided filters.
 		$searchStrings = [];
 		$filterQuery = (new Query())
 			->select(['e.id', 'e.type'])
@@ -358,213 +311,57 @@ class Search extends Component
 			}
 		}
 
-		if (!$skipRecording) {
-			$searchId = Craft::$app->getSession()->get('reliquary_searchId');
-			if (!$searchId) {
-				$searchId = md5(Craft::$app->getSession()->getId() . date('U'));
-				Craft::$app->getSession()->set('reliquary_searchId', $searchId);
-			}
-			$filterRecord = [];
-			foreach ($options as $option) {
-				if (!isset($option['filter']) || !isset($option['value']) || empty($option['value'])) {
-					continue;
-				}
-				$filterRecord[] = [
-					'field' => $filters[$option['filter']]->getField()->handle,
-					'value' => $option['value'],
-				];
-			}
-			Craft::$app->getDb()->createCommand()
-				->insert('{{%reliquary_searchrecord}}', [
-					'subjectId' => $searchId,
-					'time' => date('Y-m-d H:i:s'),
-					'term' => isset($searchStrings[-1]) ? $searchStrings[-1] : null,
-					'filters' => json_encode($filterRecord),
-				], false)
-				->execute();
-		}
+		// Build search filtering for text search, if any text is provided.
+		if (!empty($searchStrings)) {
 
-		// Convert all search strings to ngrams, collapse down to list of
-		// non-duplicate grams per filter.
-		$searchGrams = [];
-		foreach ($searchStrings as $filter => $searchString) {
-			$searchGrams[$filter] = [];
+			// Index every search string as a subquery, starting with the type union, allowing only elements of the search group.
+			$keyQueryAliases = [];
+			$scoreQuery = (new Query())
+				->select([
+					'e.id',
+				])
+				->from(['e' => $typeUnionQuery]);
+			foreach ($searchStrings as $filterId => $rawKeywords) {
+				$keyQueryAliases[] = 'kq' . (count($keyQueryAliases) + 1);
 
-			// NOTE: In special cases, where search should occur for fewer characters
-			// We may want to take search strings that are short, and find existing
-			// ngrams that begin with these characters.
+				// Normalize the text being searched.
+				$keywords = SearchHelper::normalizeKeywords($rawKeywords, [], true, Craft::$app->getSites()->getSiteById($group->siteId)->language);
 
-			// Build a 3-gram set out of the provided string.
-			$grams = SearchHelper::buildNgram($searchString);
+				// Perform the full-text search, totaling all of the scores found for a given element (sum really only necessary for general search).
+				$matchString = 'MATCH(`keywords`) AGAINST(' . Craft::$app->getDb()->quoteValue($keywords) . ')';
+				$searchQuery = (new Query())
+					->select([
+						'elementId',
+						'SUM(' . $matchString . ') AS score',
+					])
+					->from(Table::SEARCHINDEX)
+					->where($matchString)
+					->andWhere(['siteId' => $group->siteId])
+					->groupBy('elementId');
 
-			// Put each gram into groups, store groups in final search array.
-			// Make sure each gram added to the final array is weighted by
-			// its total usage.
-			$gramGroup = [];
-			foreach ($grams as $gram) {
-				if (preg_match('/ /', $gram)) { // Contains space, clear group.
-					// Add each gram to the search, weighted by the total grams in each keyword.
-					foreach ($gramGroup as $finalGram) {
-						if (!isset($searchGrams[$filter][$finalGram])) {
-							$searchGrams[$filter][$finalGram] = 0;
-						}
-
-						$searchGrams[$filter][$finalGram] += 1 / count($gramGroup);
+				// If this search is for a specific filter (not generic) then add a clause for the filter's attribute/fieldId.
+				if ($filterId !== -1) {
+					if ($filters[$filterId]->fieldId) {
+						$searchQuery->andWhere(['fieldId' => $filters[$filterId]->fieldId]);
+					} else {
+						$searchQuery->andWhere(['attribute' => $filters[$filterId]->attribute]);
 					}
-					$gramGroup = [];
-				} else { // No whitespace, add to group.
-					$gramGroup[] = $gram;
-				}
-			}
-
-			// Dump any remaining grams in the group.
-			foreach ($gramGroup as $finalGram) {
-				if (!isset($searchGrams[$finalGram])) {
-					$searchGrams[$filter][$finalGram] = 0;
 				}
 
-				$searchGrams[$filter][$finalGram] += 1 / count($gramGroup);
-			}
-		}
-
-		// Convert key -> score pairs to an array of data.
-		// Determine total number of unique filters that should match
-		// in order to be considered a valid result.
-		$totalFilters = count($searchStrings);
-		$temp = [];
-		foreach ($searchGrams as $filterId => $gram) {
-			if ($filterId == -1) {
-				$filterId = null;
-				$totalFilters -= 1; // General text search is not really a filter.
-			}
-			foreach ($gram as $key => $score) {
-				$temp[] = [
-					$key,
-					$score,
-					$filterId,
-				];
-			}
-		}
-		$searchGrams = $temp;
-
-		if (!empty($searchGrams)) {
-			// Build a list containing all search grams.
-			// Quotes and all have already been stripped out.
-			$allGrams = [];
-			foreach ($searchGrams as $gram) {
-				$allGrams[$gram[0]] = true;
-			}
-			$allGrams = array_keys($allGrams);
-			$condition = '\'' . implode('\',\'', $allGrams) . '\'';
-
-			// Start with a subquery that retrieves all relevant ngrams.
-			if (Craft::$app->getDb()->getIsMysql()) {
-				// Create temporary table to store data being searched for.
-				$sql = <<<EOT
-DROP TEMPORARY TABLE IF EXISTS reliquary_querygrams;
-
-CREATE TEMPORARY TABLE reliquary_querygrams (
-	`key` CHAR(3) NOT NULL
-	, score DOUBLE NOT NULL
-	, filterId INT NULL
-)
-ENGINE=MEMORY;
-EOT;
-				Craft::$app->getDb()->createCommand($sql)
-					->execute();
-
-				Craft::$app->getDb()->createCommand()
-					->batchInsert(
-						'reliquary_querygrams',
-						['key', 'score', 'filterId'],
-						$searchGrams,
-						false
-					)
-					->execute();
-
-				$sql = <<<EOT
-SELECT
-	`dat`.`indexId`
-	, `dat`.`key`
-	, @rid := @rid + ((@prevOffset + 1) != `dat`.`offset`) AS `runId`
-	, @prevOffset := `dat`.`offset` as `offset`
-FROM (
-	SELECT
-		@rid := 0
-		, @prevOffset := 0
-	) `states`
-	, {{%reliquary_ngramdata}} `dat`
-WHERE
-	`dat`.`key` IN ($condition)
-ORDER BY
-	`dat`.`indexId`
-	, `dat`.`offset`
-EOT;
-			} else {
-				throw new \Exception('PostgreSQL 🚮');
+				$scoreQuery->innerJoin([end($keyQueryAliases) => $searchQuery], 'e.id = ' . end($keyQueryAliases) . '.elementId');
 			}
 
-			// Calculate the run length (number of adjacent ngrams), combine with filter information to ensure only required filters are pulled.
-			$searchQuery = (new Query())
-				->select([
-					'filteredKeys.indexId',
-					'filteredKeys.runId',
-					'runScore' => 'POWER(SUM(`qg`.`score`), 10 / COUNT(`qg`.`key`))',
-					'filterId' => 'COALESCE(`f`.`id`, NULL)',
-				])
-				->from(['filteredKeys' => new Expression('(' . $sql . ')')])
-				->innerJoin('reliquary_querygrams qg', 'filteredKeys.key = qg.key')
-				->innerJoin('{{%reliquary_ngramindex}} idx', 'filteredKeys.indexId = idx.id')
-				->leftJoin('{{%reliquary_searchgroupfilters}} f', 'qg.filterId = f.id AND (idx.fieldId = f.fieldId OR idx.attribute = f.attribute)')
-				->groupBy([
-					'filteredKeys.indexId',
-					'filteredKeys.runId',
-				]);
+			// Create a wrapping query to total up the score.
+			$scoreQuery->addSelect([
+				'totalScore' => implode('.score +', $keyQueryAliases) . '.score',
+			]);
 
-			// Calculate field weights by totalling the runs.
-			$searchQuery = (new Query())
-				->select([
-					'runs.indexId',
-					'runs.filterId',
-					'indexWeight' => 'SUM(`runs`.`runScore`) / LOG10(`idx`.`ngrams`)',
-				])
-				->from(['runs' => $searchQuery])
-				->innerJoin('{{%reliquary_ngramindex}} idx', 'runs.indexId = idx.id')
-				->groupBy([
-					'runs.indexId',
-					'runs.filterId',
-				]);
+			// Add the .
+			$elementQuery->orderBy('totalScore DESC');
 
-			// Calculate element weights by combining each field.
-			$searchQuery = (new Query())
-				->select([
-					'idx.elementId',
-					'elementWeight' => 'SUM(`weights`.`indexWeight` * COALESCE(`cfw`.`multiplier`, 1))',
-					'filterCount' => 'COUNT(DISTINCT(`weights`.`filterId`))',
-				])
-				->from(['weights' => $searchQuery])
-				->innerJoin('{{%reliquary_ngramindex}} idx', 'weights.indexId = idx.id')
-				->innerJoin(['typeUnion' => $typeUnionQuery], 'idx.elementId = typeUnion.id')
-				->innerJoin('{{%elements}} sq_e', 'idx.elementId = sq_e.id')
-				->leftJoin('{{%reliquary_customfieldweights}} cfw', '(idx.fieldId = cfw.fieldId OR idx.attribute = cfw.attribute) AND sq_e.type = cfw.elementType AND typeUnion.typeId = cfw.elementTypeId')
-				->where([
-					'idx.siteId' => $group->siteId,
-				])
-				->groupBy([
-					'idx.elementId',
-				])
-				->having([
-					'filterCount' => $totalFilters,
-				])
-				->orderBy('elementWeight DESC');
-
-			$elementQuery->innerJoin(['searchWeights' => $searchQuery], 'e.id = searchWeights.elementId');
-
-			$elementQuery->orderBy('searchWeights.elementWeight DESC');
-			$elementQuery->addSelect(['searchScore' => 'searchWeights.elementWeight']);
-
-			// Ensure minimum score based on settings.
-			$elementQuery->andWhere(['>', 'searchWeights.elementWeight', Craft::$app->getPlugins()->getPlugin('reliquary')->getSettings()->minimumScore]);
+			// Add the score to the final query and ensure minimum score based on settings.
+			$elementQuery->innerJoin(['sq' => $scoreQuery], 'e.id = sq.id');
+			$elementQuery->andWhere(['>', 'sq.totalScore', Craft::$app->getPlugins()->getPlugin('reliquary')->getSettings()->minimumScore]);
 		} else {
 			$elementQuery->innerJoin(['typeUnion' => $typeUnionQuery], 'es.elementId = typeUnion.id');
 
@@ -683,116 +480,5 @@ EOT;
 			'pageSize' => $group->pageSize,
 			'queryTime' => (microtime(true) - $queryTime) * 1000,
 		];
-	}
-
-	/**
-	 * Clears out all reliquary index data.
-	 */
-	public function clearIndexTables()
-	{
-		Craft::$app->getDb()->createCommand()
-			->truncateTable('{{%reliquary_ngramdata}}')
-			->execute();
-
-		Craft::$app->getDb()->createCommand()
-			->truncateTable('{{%reliquary_ngramindex}}')
-			->execute();
-
-		Craft::$app->getDb()->createCommand()
-			->truncateTable('{{%reliquary_indexqueue}}')
-			->execute();
-	}
-
-	/**
-	 * Deletes stored Reliquary index data for a given element.
-	 * @param Element $element The element to delete the index data of.
-	 */
-	public function deleteIndexDataForElement($element)
-	{
-		if ($element) {
-			$this->deleteIndexDataForElementById($element->id);
-		}
-	}
-
-	/**
-	 * Deletes stored Reliquary index data for a given element by its ID.
-	 *
-	 * Keep in mind if something within this method fails or PHP happens to
-	 * crash partway through, the index will be out of sync with the actual data
-	 * and would need to be rebuilt for the most accurate results.
-	 * @param int $elementId The ID of the element to delete the index data of.
-	 */
-	public function deleteIndexDataForElementById(int $elementId)
-	{
-		$indexes = (new Query())
-			->select(['id'])
-			->from('{{%reliquary_ngramindex}}')
-			->where(['elementId' => $elementId])
-			->column();
-
-		if (count($indexes)) { // Remove data related to existing indexes.
-			// Remove raw data.
-			Craft::$app->getDb()->createCommand()
-				->delete('{{%reliquary_ngramdata}}', [
-					'indexId' => $indexes
-				])
-				->execute();
-		}
-
-		// Remove index pointing to data.
-		Craft::$app->getDb()->createCommand()
-			->delete('{{%reliquary_ngramindex}}', [
-				'elementId' => $elementId
-			])
-			->execute();
-	}
-
-	/**
-	 * Clears out any pending index updates for an element.
-	 * @param int The element to clear the pending indexes for.
-	 * @param int The site to clear the pending indexes for.
-	 */
-	public function clearPendingIndexQueue(int $elementId, int $siteId)
-	{
-		Craft::$app->getDb()->createCommand()
-			->delete('{{%reliquary_indexqueue}}', [
-				'elementId' => $elementId,
-				'siteId' => $siteId,
-			])
-			->execute();
-	}
-
-	/**
-	 * Updates or creates a field weight record based on the provided properties.
-	 * @param $weight The model representing the custom field weight change.
-	 * @return bool True on successful delete, false if no records were deleted.
-	 */
-	public function saveFieldWeight(CustomFieldWeight $weight)
-	{
-		$record = CustomFieldWeightRecord::find()
-			->where([
-				'and',
-				['attribute' => $weight->attribute],
-				['fieldId' => $weight->fieldId],
-				['elementType' => $weight->elementType],
-				['elementTypeId' => $weight->elementTypeId],
-			])
-			->one();
-
-		if (!$record) {
-			$record = new CustomFieldWeightRecord([
-				'attribute' => $weight->attribute,
-				'fieldId' => $weight->fieldId,
-				'elementType' => $weight->elementType,
-				'elementTypeId' => $weight->elementTypeId,
-				'multiplier' => $weight->multiplier,
-			]);
-		} else {
-			$record->multiplier = $weight->multiplier;
-		}
-
-		$record->save();
-
-		return true;
 	}
 }
