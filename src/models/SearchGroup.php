@@ -76,7 +76,7 @@ class SearchGroup extends Model
 	/**
 	 * @inheritdoc
 	 */
-	public function rules()
+	public function rules(): array
 	{
 		return [
 			[['id', 'siteId', 'pageSize', 'sortOrder'], 'number', 'integerOnly' => true],

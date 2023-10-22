@@ -20,13 +20,13 @@ use yii\web\NotFoundHttpException;
 class SearchController extends Controller
 {
 	// All functions within this controller are publicly/anonymously accessible.
-	protected $allowAnonymous = true;
+	protected array|int|bool $allowAnonymous = true;
 	public $enableCsrfValidation = false;
 
 	/**
 	 * @inheritdoc
 	 */
-	public function init()
+	public function init(): void
 	{
 		parent::init();
 

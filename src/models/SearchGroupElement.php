@@ -46,7 +46,7 @@ class SearchGroupElement extends Model
 	/**
 	 * @inheritdoc
 	 */
-	public function rules()
+	public function rules(): array
 	{
 		return [
 			[['id', 'groupId', 'elementTypeId', 'sortOrder'], 'number', 'integerOnly' => true],

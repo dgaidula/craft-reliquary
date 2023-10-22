@@ -166,7 +166,7 @@ class Reliquary extends Plugin
 	 * @inheritdoc
 	 * @see craft\base\Plugin
 	 */
-	public function getCpNavItem()
+	public function getCpNavItem(): ?array
 	{
 		$item = parent::getCpNavItem();
 //		$item['badgeCount'] = '!';
@@ -193,7 +193,7 @@ class Reliquary extends Plugin
 	 * @inheritdoc
 	 * @see craft\base\Plugin
 	 */
-	protected function createSettingsModel()
+	protected function createSettingsModel(): ?\craft\base\Model
 	{
 		return new \jaredlindo\reliquary\models\Settings();
 	}

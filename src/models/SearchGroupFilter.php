@@ -60,7 +60,7 @@ class SearchGroupFilter extends Model
 	/**
 	 * @inheritdoc
 	 */
-	public function rules()
+	public function rules(): array
 	{
 		return [
 			[['id', 'groupId', 'fieldId', 'sortOrder'], 'number', 'integerOnly' => true],

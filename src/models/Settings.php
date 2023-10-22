@@ -20,7 +20,7 @@ class Settings extends Model
 	 * @inheritdoc
 	 * @see yii\base\BaseObject
 	 */
-	public function init()
+	public function init(): void
 	{
 		parent::init();
 	}
@@ -29,7 +29,7 @@ class Settings extends Model
 	 * @inheritdoc
 	 * @see craft\base\Model
 	 */
-	public function rules()
+	public function rules(): array
 	{
 		return [
 			['minimumScore', 'numerical', 'integerOnly' => false, 'min' => 0],

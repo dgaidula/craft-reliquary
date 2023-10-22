@@ -11,15 +11,14 @@ use jaredlindo\reliquary\Reliquary;
 use Craft;
 use craft\base\ElementInterface;
 use craft\db\Query;
-
-use yii\base\Component;
+use craft\services\Search;
 
 /**
  * A service that intercepts calls to Craft's native Search service, performing
  * Reliquary's own indexing behavior and then forwarding calls as becessary to
  * craft's original Search service.
  */
-class CraftSearchWrapper extends Component
+class CraftSearchWrapper extends Search
 {
 	/**
 	 * A handle to the old service that is now replaced.
@@ -29,7 +28,7 @@ class CraftSearchWrapper extends Component
 	/**
 	 * @inheritdoc
 	 */
-	public function init()
+	public function init():void
 	{
 		parent::init();
 
@@ -39,7 +38,7 @@ class CraftSearchWrapper extends Component
 	/**
 	 * Used to forward any unhandled properties to the wrapped service.
 	 */
-	public function __get($name)
+	public function __get($name):Search
 	{
 		return $this->_oldService->$name;
 	}
@@ -47,7 +46,7 @@ class CraftSearchWrapper extends Component
 	/**
 	 * Used to forward any unhandled calls to the wrapped service.
 	 */
-	public function __call($name, $arguments)
+	public function __call($name, $arguments):Search
 	{
 		return call_user_func_array([$this->_oldService, $name], $arguments);
 	}
@@ -87,6 +86,9 @@ class CraftSearchWrapper extends Component
 			return true;
 		}
 
-		return $this->_oldService->indexElementFields($elementId, $siteId, $fields);
+		//new indexElementFields is deprecated since 3.4 and gone in 4+
+		$element = Entry::findOne($elementId);
+		return $this->_oldService->indexElementAttributes($element, $fields);
+		//return $this->_oldService->indexElementFields($elementId, $siteId, $fields);
 	}
 }
