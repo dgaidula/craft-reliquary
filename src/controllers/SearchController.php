@@ -52,7 +52,8 @@ class SearchController extends Controller
 		$results = Reliquary::getInstance()->search->doSearch($groupId, $options, $page);
 
 		$group = Reliquary::getInstance()->searchGroups->getGroupById($groupId); // Should exist if we've gotten this far.
-		return $this->renderTemplate($group->template, $results);
+		$data = ['results'=>$results,'options'=>$options];
+		return $this->renderTemplate($group->template, $data);
 	}
 
 	/**

@@ -2,7 +2,7 @@
 	"name": "jaredlindo/craft-reliquary",
 	"description": "Tooling to extend Craft's native search capabilities. Version 2+ supports Craft 4+!",
 	"type": "craft-plugin",
-	"version": "2.0.1",
+	"version": "2.0.2",
 	"license": "proprietary",
 	"authors": [
 		{
